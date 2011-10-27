@@ -75,6 +75,10 @@ module Resque
     def initialize(*queues)
       @queues = queues
       validate_queues
+
+      # Set default maximum jobs per child to 1.  This is overwritten
+      # and reset with +#max_child_jobs=+ if the rake task is used.
+      @max_child_jobs = 1
     end
 
     # A worker must be given a queue, otherwise it won't know what to
