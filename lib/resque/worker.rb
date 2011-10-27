@@ -280,6 +280,7 @@ module Resque
     def shutdown!
       shutdown
       kill_child
+      child_done_working
     end
 
     # Kills the forked child immediately, without remorse. The job it
@@ -386,6 +387,12 @@ module Resque
     def done_working
       processed!
       redis.del("worker:#{self}")
+    end
+
+    # Called by the parent after issuing KILL to child; contains the
+    # right PID
+    def child_done_working
+      redis.del("worker:#{hostname}:#{@child}:#{@queues.join(',')}")
     end
 
     # How many jobs has this worker processed? Returns an int.
