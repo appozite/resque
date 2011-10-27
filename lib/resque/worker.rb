@@ -127,7 +127,7 @@ module Resque
               job = (@jobs_processed == 0) ? first_job : reserve
               if job
                 working_on job
-                procline "Processing #{job.queue} since #{Time.now.to_i}"
+                procline "Processing #{job.queue} (#{@jobs_processed+1} of #{@max_child_jobs}) since #{Time.now.to_i}"
                 perform(job, &block)
                 done_working
                 @jobs_processed += 1
