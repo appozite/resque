@@ -36,13 +36,13 @@ This Fork of Resque
 This is a fork which provides backwards-compatible long-lived
 children, which can process more than one job.
 
-The additional environment variables are:
+The additional environment variable is:
 
 * `MAX_CHILD_JOBS` - the maximum number of jobs processed by a child process
-* `MAX_CHILD_RSS` - the maximum ceiling for resident set size memory, in KB
 
 By default, `MAX_CHILD_JOBS` equals 1, and at least one job per child
 is guaranteed.
+
 
 The Blog Post
 -------------
