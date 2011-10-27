@@ -301,12 +301,14 @@ module Resque
     def pause_processing
       log "USR2 received; pausing job processing"
       @paused = true
+      kill_child("USR2")
     end
 
     # Start processing jobs again after a pause
     def unpause_processing
       log "CONT received; resuming job processing"
       @paused = false
+      kill_child("CONT")
     end
 
     # Looks for any workers which should be running on this server
