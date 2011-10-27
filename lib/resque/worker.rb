@@ -110,22 +110,33 @@ module Resque
       loop do
         break if @shutdown
 
-        if not @paused and job = reserve
-          log "got: #{job.inspect}"
+        if not @paused and first_job = reserve
+          log "got: #{first_job.inspect}"
           run_hook :before_fork
-          working_on job
 
           if @child = fork
             rand # Reseeding
             procline "Forked #{@child} at #{Time.now.to_i}"
             Process.wait
           else
-            procline "Processing #{job.queue} since #{Time.now.to_i}"
-            perform(job, &block)
-            exit! unless @cant_fork
+            @jobs_processed = 0
+            loop do
+              if child_should_exit
+                @cant_fork ? break : exit!
+              end
+              job = (@jobs_processed == 0) ? first_job : reserve
+              if job
+                working_on job
+                procline "Processing #{job.queue} since #{Time.now.to_i}"
+                perform(job, &block)
+                done_working
+                @jobs_processed += 1
+              else
+                @cant_fork ? break : exit!
+              end
+            end
           end
 
-          done_working
           @child = nil
         else
           break if interval.to_i == 0
@@ -207,8 +218,30 @@ module Resque
       end
     end
 
+    # Set Child Process Expectations - used by the child loop
+    # * Default :: max child jobs set to 1 (backwards-compatible)
+    # * +MAX_CHILD_JOBS+ :: positive number of jobs to complete (default: 1)
+    # * +MAX_CHILD_RSS+ :: maximum child resident memory size, in KB
+    def set_child_expectations
+      if ENV['MAX_CHILD_RSS'].nil? && ENV['MAX_CHILD_JOBS'].nil?
+        # default settings 1 job per child
+        log "No MAX_CHILD_* env variables found. Defaulting to MAX_CHILD_JOBS=1"
+        @max_child_jobs = 1
+      elsif ENV['MAX_CHILD_JOBS']
+        @max_child_jobs = ENV['MAX_CHILD_JOBS'].to_i
+        @max_child_jobs = 1 if @max_child_jobs < 1
+        log "MAX_CHILD_JOBS set to #{@max_child_jobs}"
+      end
+      if ENV['MAX_CHILD_RSS']
+        @max_child_rss = ENV['MAX_CHILD_RSS'].to_i
+        @max_child_rss = nil if @max_child_rss < 1
+        log "MAX_CHILD_RSS set to #{@max_child_rss}"
+      end
+    end
+
     # Runs all the methods needed when a worker begins its lifecycle.
     def startup
+      set_child_expectations
       enable_gc_optimizations
       register_signal_handlers
       prune_dead_workers
@@ -241,7 +274,7 @@ module Resque
       trap('INT')  { shutdown!  }
 
       begin
-        trap('QUIT') { shutdown   }
+        trap('QUIT') { shutdown_and_tell_child }
         trap('USR1') { kill_child }
         trap('USR2') { pause_processing }
         trap('CONT') { unpause_processing }
@@ -259,6 +292,12 @@ module Resque
       @shutdown = true
     end
 
+    # Shuts down and propagates process to child as well
+    def shutdown_and_tell_child
+      shutdown
+      kill_child('QUIT')
+    end
+
     # Kill the child and shutdown immediately.
     def shutdown!
       shutdown
@@ -267,11 +306,11 @@ module Resque
 
     # Kills the forked child immediately, without remorse. The job it
     # is processing will not be completed.
-    def kill_child
+    def kill_child(signal="KILL")
       if @child
-        log! "Killing child at #{@child}"
+        log! "Killing child at #{@child} with #{signal}"
         if system("ps -o pid,state -p #{@child}")
-          Process.kill("KILL", @child) rescue nil
+          Process.kill(signal, @child) rescue nil
         else
           log! "Child #{@child} not found, restarting."
           shutdown
@@ -473,6 +512,31 @@ module Resque
     # Logs a very verbose message to STDOUT.
     def log!(message)
       log message if very_verbose
+    end
+
+    def child_should_exit
+      if @jobs_processed == 0
+        # always process the first job
+        return false
+      elsif @paused || @shutdown
+        # exit if paused or shutting down
+        log "child should exit due to #{@paused ? "paused" : "shutdown"}"
+        return true
+      elsif @max_child_jobs && @jobs_processed >= @max_child_jobs
+        # exit if we've reached our jobs quota
+        log "child should exit as it has processed #{@max_child_jobs} job(s)"
+        return true
+      elsif @max_child_rss
+        # calculate rss if +@max_child_rss+
+        rss = `ps --no-headers --pid #{$$} -o rss`.to_i
+        if rss > @max_child_rss
+          log "child should exit as #{rss} KB RSS has surpassed #{@max_child_rss} KB"
+          return true
+        end
+      else
+        # default: keep going!
+        return false
+      end
     end
   end
 end
