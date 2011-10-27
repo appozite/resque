@@ -119,6 +119,7 @@ module Resque
             procline "Forked #{@child} at #{Time.now.to_i}"
             Process.wait
           else
+            run_hook :after_fork, first_job
             @jobs_processed = 0
             loop do
               if child_should_exit
@@ -164,7 +165,6 @@ module Resque
     # Processes a given job in the child.
     def perform(job)
       begin
-        run_hook :after_fork, job
         job.perform
       rescue Object => e
         log "#{job.inspect} failed: #{e.inspect}"
