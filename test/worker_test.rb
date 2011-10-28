@@ -369,6 +369,54 @@ context "Resque::Worker" do
     assert_equal(job_history, $AFTER_FORK_CALLED_HISTORY)
   end
 
+  test "signal QUIT to parent halfway graceful kills child" do
+    Resque.redis.flushall
+
+    $TESTING = false # disable forking once again
+
+    num_jobs = 10
+    kill_job_idx = 0
+
+    # clear counter
+    Resque.redis.del(TimedSignalsJob::COUNTER_KEY)
+
+    workerA = Resque::Worker.new(:jobs)
+    num_jobs.times do
+      Resque::Job.create(:jobs, TimedSignalsJob, {
+        kill_job_idx => [:parent, "QUIT"],
+      })
+    end
+
+    workerA.work(0)
+    assert_equal((kill_job_idx+1).to_s, Resque.redis.get(TimedSignalsJob::COUNTER_KEY))
+
+    $TESTING = true # disable forking once again
+  end
+
+  test "signal KILL to child immediately terminates child" do
+    Resque.redis.flushall
+
+    $TESTING = false # disable forking once again
+
+    num_jobs = 10
+    kill_job_idx = 4
+
+    # clear counter
+    Resque.redis.del(TimedSignalsJob::COUNTER_KEY)
+
+    workerA = Resque::Worker.new(:jobs)
+    num_jobs.times do
+      Resque::Job.create(:jobs, TimedSignalsJob, {
+        kill_job_idx => [:child, "KILL"],
+      })
+    end
+
+    workerA.work(0)
+    assert_equal(kill_job_idx.to_s, Resque.redis.get(TimedSignalsJob::COUNTER_KEY))
+
+    $TESTING = true # disable forking once again
+  end
+
   private
     # Works in conjunction with SaveForkHooksStatusesJob
     # to keep track of before_hook and after_hook calls

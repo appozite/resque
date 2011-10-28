@@ -113,7 +113,6 @@ module Resque
 
       loop do
         break if @shutdown
-
         if not @paused and first_job = reserve
           log "got: #{first_job.inspect}"
           run_hook :before_fork

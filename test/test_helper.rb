@@ -117,3 +117,19 @@ class SaveForkHooksStatusesJob
   end
 end
 
+class TimedSignalsJob
+  COUNTER_KEY = 'TimedSignalsJob:job_counter'
+  # +schedule+ :: Provides schedule for signals
+  # * +{ 0 : [ :child, "HUP" ] }+ ::
+  #   On the first iteration, send a HUP to the child
+  def self.perform(schedule)
+    job_counter = Resque.redis.get(COUNTER_KEY) || 0
+    if (instructions = schedule[job_counter.to_s])
+      target, signal = instructions
+      target_pid = (target.to_sym == :child) ? $$ : Process.ppid
+      Process.kill(signal, target_pid)
+      sleep 0.5
+    end
+    Resque.redis.incr(COUNTER_KEY)
+  end
+end
