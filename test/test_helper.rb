@@ -109,3 +109,11 @@ class BadJobWithSyntaxError
     raise SyntaxError, "Extra Bad job!"
   end
 end
+
+class SaveForkHooksStatusesJob
+  def self.perform
+    $BEFORE_FORK_CALLED_HISTORY << $BEFORE_FORK_CALLED
+    $AFTER_FORK_CALLED_HISTORY << $AFTER_FORK_CALLED
+  end
+end
+

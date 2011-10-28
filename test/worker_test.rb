@@ -299,4 +299,94 @@ context "Resque::Worker" do
     workerA.work(0)
     assert $AFTER_FORK_CALLED
   end
+
+  test "Will call an after_fork hook after forking" do
+    Resque.redis.flushall
+    $AFTER_FORK_CALLED = false
+    Resque.after_fork = Proc.new { $AFTER_FORK_CALLED = true }
+    workerA = Resque::Worker.new(:jobs)
+
+    assert !$AFTER_FORK_CALLED
+    Resque::Job.create(:jobs, SomeJob, 20, '/tmp')
+    workerA.work(0)
+    assert $AFTER_FORK_CALLED
+  end
+
+  test "Before/After Fork hooks happen once per job by default" do
+    Resque.redis.flushall
+
+    setup_hook_globals
+    num_jobs = 10
+    workerA = Resque::Worker.new(:jobs)
+
+    num_jobs.times { Resque::Job.create(:jobs, SaveForkHooksStatusesJob) }
+
+    assert_no_hook_changes
+    workerA.work(0)
+
+    job_history = (1..num_jobs).to_a
+    assert_equal(job_history, $BEFORE_FORK_CALLED_HISTORY)
+    assert_equal(job_history, $AFTER_FORK_CALLED_HISTORY)
+  end
+
+  test "Before/After Fork hooks happen once with max_child_num=10 and jobs=10" do
+    Resque.redis.flushall
+    setup_hook_globals
+
+    max_child_jobs = 10
+    num_jobs = 10
+    workerA = Resque::Worker.new(:jobs)
+    workerA.max_child_jobs = max_child_jobs
+
+    num_jobs.times { Resque::Job.create(:jobs, SaveForkHooksStatusesJob) }
+
+    assert_no_hook_changes
+    workerA.work(0)
+
+    job_history = [1]*max_child_jobs
+    assert_equal(job_history, $BEFORE_FORK_CALLED_HISTORY)
+    assert_equal(job_history, $AFTER_FORK_CALLED_HISTORY)
+  end
+
+  test "Before/After Fork hook happens twice with max_child_num=5 and jobs=10" do
+    Resque.redis.flushall
+
+    setup_hook_globals
+
+    num_jobs = 10
+    max_child_jobs = 5
+
+    workerA = Resque::Worker.new(:jobs)
+    workerA.max_child_jobs = max_child_jobs
+
+    num_jobs.times { Resque::Job.create(:jobs, SaveForkHooksStatusesJob) }
+
+    assert_no_hook_changes
+    workerA.work(0)
+
+    job_history = [1]*max_child_jobs+[2]*max_child_jobs
+    assert_equal(job_history, $BEFORE_FORK_CALLED_HISTORY)
+    assert_equal(job_history, $AFTER_FORK_CALLED_HISTORY)
+  end
+
+  private
+    # Works in conjunction with SaveForkHooksStatusesJob
+    # to keep track of before_hook and after_hook calls
+    def setup_hook_globals
+      $BEFORE_FORK_CALLED = 0
+      $BEFORE_FORK_CALLED_HISTORY = []
+      $AFTER_FORK_CALLED = 0
+      $AFTER_FORK_CALLED_HISTORY = []
+
+      Resque.before_fork = Proc.new { $BEFORE_FORK_CALLED += 1 }
+      Resque.after_fork = Proc.new { $AFTER_FORK_CALLED += 1 }
+    end
+
+    def assert_no_hook_changes
+      assert_equal(0, $BEFORE_FORK_CALLED)
+      assert_equal(0, $AFTER_FORK_CALLED)
+      assert_equal([], $BEFORE_FORK_CALLED_HISTORY)
+      assert_equal([], $AFTER_FORK_CALLED_HISTORY)
+    end
+
 end
