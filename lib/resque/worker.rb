@@ -466,7 +466,7 @@ module Resque
     # The string representation is the same as the id for this worker
     # instance. Can be used with `Worker.find`.
     def to_s
-      if @is_child
+      if @is_child && !@cant_fork
         @use_parent_pid_to_s ||= "#{hostname}:#{Process.ppid}:#{@queues.join(',')}"
       else
         @to_s ||= "#{hostname}:#{Process.pid}:#{@queues.join(',')}"
