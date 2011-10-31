@@ -131,8 +131,11 @@ module Resque
               if job
                 working_on job
                 procline "Processing #{job.queue} (#{@jobs_processed+1} of #{@max_child_jobs}) since #{Time.now.to_i}"
-                perform(job, &block)
-                done_working
+                begin
+                  perform(job, &block)
+                ensure
+                  done_working
+                end
                 @jobs_processed += 1
               else
                 break if cant_exit_fork
