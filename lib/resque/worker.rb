@@ -122,6 +122,7 @@ module Resque
             procline "Forked #{@child_pid} at #{Time.now.to_i}"
             Process.wait
           else
+            @is_child = true
             run_hook :after_fork, first_job
             @jobs_processed = 0
             loop do
@@ -462,7 +463,11 @@ module Resque
     # The string representation is the same as the id for this worker
     # instance. Can be used with `Worker.find`.
     def to_s
-      @to_s ||= "#{hostname}:#{Process.pid}:#{@queues.join(',')}"
+      if @is_child
+        @use_parent_pid_to_s ||= "#{hostname}:#{Process.ppid}:#{@queues.join(',')}"
+      else
+        @to_s ||= "#{hostname}:#{Process.pid}:#{@queues.join(',')}"
+      end
     end
     alias_method :id, :to_s
 
