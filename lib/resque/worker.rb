@@ -117,9 +117,9 @@ module Resque
           log "got: #{first_job.inspect}"
           run_hook :before_fork
 
-          if @child = fork
+          if @child_pid = fork
             rand # Reseeding
-            procline "Forked #{@child} at #{Time.now.to_i}"
+            procline "Forked #{@child_pid} at #{Time.now.to_i}"
             Process.wait
           else
             run_hook :after_fork, first_job
@@ -139,7 +139,7 @@ module Resque
             end
           end
 
-          @child = nil
+          @child_pid = nil
         else
           break if interval.to_i == 0
           log! "Sleeping for #{interval.to_i}"
@@ -287,12 +287,12 @@ module Resque
     # Kills the forked child immediately, without remorse. The job it
     # is processing will not be completed.
     def kill_child(signal="KILL")
-      if @child
-        log! "Killing child at #{@child} with #{signal}"
-        if system("ps -o pid,state -p #{@child}")
-          Process.kill(signal, @child) rescue nil
+      if @child_pid
+        log! "Killing child at #{@child_pid} with #{signal}"
+        if system("ps -o pid,state -p #{@child_pid}")
+          Process.kill(signal, @child_pid) rescue nil
         else
-          log! "Child #{@child} not found, restarting."
+          log! "Child #{@child_pid} not found, restarting."
           shutdown
         end
       end
@@ -393,7 +393,7 @@ module Resque
     # Called by the parent after issuing KILL to child; contains the
     # right PID
     def child_done_working
-      redis.del("worker:#{hostname}:#{@child}:#{@queues.join(',')}")
+      redis.del("worker:#{hostname}:#{@child_pid}:#{@queues.join(',')}")
     end
 
     # How many jobs has this worker processed? Returns an int.
