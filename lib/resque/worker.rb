@@ -125,9 +125,7 @@ module Resque
             run_hook :after_fork, first_job
             @jobs_processed = 0
             loop do
-              if child_should_exit
-                @cant_fork ? break : exit!
-              end
+              break if child_should_exit && cant_exit_fork
               job = (@jobs_processed == 0) ? first_job : reserve
               if job
                 working_on job
@@ -136,7 +134,7 @@ module Resque
                 done_working
                 @jobs_processed += 1
               else
-                @cant_fork ? break : exit!
+                break if cant_exit_fork
               end
             end
           end
@@ -504,6 +502,12 @@ module Resque
       log message if very_verbose
     end
 
+    # Main child control check
+    # * always processes the first job
+    # * otherwise, child exits if:
+    # ** paused
+    # ** shutdown
+    # ** reached max_child_jobs
     def child_should_exit
       if @jobs_processed == 0
         # always process the first job
@@ -522,13 +526,20 @@ module Resque
       end
     end
 
+    # Set accessor for max_child_jobs, floors at 1
     def max_child_jobs=(jobs)
       @max_child_jobs = jobs.to_i
       @max_child_jobs = 1 if @max_child_jobs < 1
     end
 
+    # Get accessor for max_child_jobs, floors at 1
     def max_child_jobs
-      @max_child_jobs
+      @max_child_jobs ||= 1
+    end
+
+    # Nicety used as: +break if cant_exit_fork+
+    def cant_exit_fork
+      @cant_fork ? true : exit!
     end
 
   end
