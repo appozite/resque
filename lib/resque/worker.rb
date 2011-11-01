@@ -137,7 +137,7 @@ module Resque
                 @jobs_processed += 1
               end
             end
-            exit! unless @cant_fork
+            exit! if @is_child
           end
 
           @child_pid = nil
