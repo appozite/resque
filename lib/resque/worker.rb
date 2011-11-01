@@ -460,14 +460,19 @@ module Resque
       "#<Worker #{to_s}>"
     end
 
+    # Memoize the worker (parent, if we're in the child) process id so that 
+    # the result of this method always returns the actual worker process id.
+    def worker_pid
+      @worker_pid ||= (@is_child ? Process.ppid : Process.pid)
+    end
+
     # The string representation is the same as the id for this worker
     # instance. Can be used with `Worker.find`.
+    #
+    # Since the worker_pid will always point to the *parent process* this 
+    # memoiziation works whether or not it occurs in the parent or the child
     def to_s
-      if @is_child
-        @use_parent_pid_to_s ||= "#{hostname}:#{Process.ppid}:#{@queues.join(',')}"
-      else
-        @to_s ||= "#{hostname}:#{Process.pid}:#{@queues.join(',')}"
-      end
+      @to_s ||= "#{hostname}:#{worker_pid}:#{@queues.join(',')}"
     end
     alias_method :id, :to_s
 
