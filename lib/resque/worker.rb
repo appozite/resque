@@ -122,25 +122,22 @@ module Resque
             procline "Forked #{@child_pid} at #{Time.now.to_i}"
             Process.wait
           else
-            @is_child = true
-            run_hook :after_fork, first_job
+            @is_child = !@cant_fork
             @jobs_processed = 0
-            loop do
-              break if child_should_exit && cant_exit_fork
+            run_hook :after_fork, first_job
+            while !child_should_exit do
               job = (@jobs_processed == 0) ? first_job : reserve
-              if job
+              break unless job
+              begin
                 working_on job
                 procline "Processing #{job.queue} (#{@jobs_processed+1} of #{@max_child_jobs}) since #{Time.now.to_i}"
-                begin
-                  perform(job, &block)
-                ensure
-                  done_working
-                end
+                perform(job, &block)
+              ensure
+                done_working
                 @jobs_processed += 1
-              else
-                break if cant_exit_fork
               end
             end
+            exit! unless @cant_fork
           end
 
           @child_pid = nil
@@ -271,7 +268,7 @@ module Resque
     # Schedule this worker for shutdown. Will finish processing the
     # current job.
     def shutdown
-      log 'Exiting...'
+      log(@is_child ? 'Child Exiting...' : 'Exiting...')
       @shutdown = true
     end
 
@@ -466,7 +463,7 @@ module Resque
     # The string representation is the same as the id for this worker
     # instance. Can be used with `Worker.find`.
     def to_s
-      if @is_child && !@cant_fork
+      if @is_child
         @use_parent_pid_to_s ||= "#{hostname}:#{Process.ppid}:#{@queues.join(',')}"
       else
         @to_s ||= "#{hostname}:#{Process.pid}:#{@queues.join(',')}"
@@ -543,11 +540,6 @@ module Resque
     # Get accessor for max_child_jobs, floors at 1
     def max_child_jobs
       @max_child_jobs ||= 1
-    end
-
-    # Nicety used as: +break if cant_exit_fork+
-    def cant_exit_fork
-      @cant_fork ? true : exit!
     end
 
   end
